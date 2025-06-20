@@ -1,0 +1,40 @@
+[tool.poetry]
+name = "mathrender"
+version = "0.1.0"
+description = "Convert LaTeX mathematical expressions to images for web and email"
+authors = ["Francisco Boerr <francisco.boerr@deinnovatie.com>"]
+readme = "README.md"
+packages = [{include = "mathrender"}]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.8.1"
+pillow = "^10.0.0"
+click = "^8.1.0"
+jinja2 = "^3.1.0"
+pyperclip = { version = "^1.8.0", optional = true }
+pywin32 = { version = "^306", markers = "sys_platform == 'win32'", optional = true }
+
+[tool.poetry.extras]
+clipboard = ["pyperclip", "pywin32"]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.4.0"
+black = "^23.9.0"
+flake8 = "^6.1.0"
+pytest-cov = "^4.1.0"
+
+[tool.poetry.scripts]
+mathrender = "mathrender.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py38', 'py39', 'py310', 'py311']
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
