@@ -10,6 +10,8 @@ from pathlib import Path
 from .converter import LatexToEmailConverter
 from .mime_builder import MimeEmailBuilder
 from .simple_gmail import convert_to_gmail_format
+from .smtp_sender import SmtpSender
+from .sendgrid_sender import SendGridSender
 
 
 @click.command()
@@ -19,8 +21,8 @@ from .simple_gmail import convert_to_gmail_format
               help='Input file containing LaTeX text')
 @click.option('-o', '--output', type=click.Path(),
               help='Output file for MIME content')
-@click.option('--dpi', type=int, default=300,
-              help='DPI for generated images (default: 300)')
+@click.option('--dpi', type=int, default=110,
+              help='DPI for generated images (default: 110)')
 @click.option('--subject', default='LaTeX Email',
               help='Email subject line')
 @click.option('--from', 'from_addr', help='From email address')
@@ -31,13 +33,28 @@ from .simple_gmail import convert_to_gmail_format
               help='Output MIME content instead of opening HTML')
 @click.option('--raw', '-r', is_flag=True,
               help='Output raw MIME without base64 encoding')
+@click.option('--eml', type=click.Path(),
+              help='Save as .eml file that opens in email clients')
 @click.option('--full-latex', is_flag=True,
               help='Treat entire input as LaTeX code (for complete LaTeX documents)')
 @click.option('--check', is_flag=True,
               help='Check if all required dependencies are installed')
 @click.option('--gmail', is_flag=True,
               help='Convert to Gmail format [image: ...]')
-def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, full_latex, check, gmail):
+@click.option('--send', is_flag=True,
+              help='Send email via SMTP or SendGrid')
+@click.option('--sendgrid', is_flag=True,
+              help='Use SendGrid API instead of SMTP (recommended)')
+@click.option('--sendgrid-api-key', help='SendGrid API key (or use SENDGRID_API_KEY env var)')
+@click.option('--smtp-host', help='SMTP server hostname')
+@click.option('--smtp-port', type=int, help='SMTP server port')
+@click.option('--smtp-user', help='SMTP username (usually your email)')
+@click.option('--smtp-pass', help='SMTP password')
+@click.option('--smtp-provider', type=click.Choice(['gmail', 'outlook', 'yahoo', 'office365']),
+              help='Use preset SMTP settings for provider')
+def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, eml, 
+         full_latex, check, gmail, send, sendgrid, sendgrid_api_key, smtp_host, smtp_port, 
+         smtp_user, smtp_pass, smtp_provider):
     """Convert LaTeX mathematical expressions to images.
     
     By default, generates HTML and opens it in your browser for easy copying to Gmail.
@@ -58,6 +75,14 @@ def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, 
         
         # Gmail format
         mathrender --gmail '$x^2 + y^2 = z^2$'
+        
+        # Send email via SendGrid (recommended - more secure)
+        export SENDGRID_API_KEY='your-api-key'
+        mathrender -f document.txt --sendgrid --to recipient@example.com
+        
+        # Or via SMTP (Gmail)
+        mathrender -f document.txt --send --to recipient@example.com \\
+            --smtp-provider gmail --smtp-user you@gmail.com --smtp-pass 'app-password'
     """
     # Handle special commands
     if check:
@@ -94,9 +119,9 @@ def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, 
         if full_latex:
             # Treat entire input as LaTeX
             try:
-                image_bytes = converter.latex_to_image(input_text, is_display=True, is_raw=True)
+                image_data = converter.latex_to_image(input_text, is_display=True, is_raw=True)
                 processed_text = "{LATEX_IMG_0}"
-                images = {"LATEX_IMG_0": image_bytes}
+                images = {"LATEX_IMG_0": image_data}
             except Exception as e:
                 click.echo(f"Error converting LaTeX: {e}", err=True)
                 sys.exit(1)
@@ -108,12 +133,72 @@ def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, 
             if images:
                 # Get the first (or only) image
                 img_key = list(images.keys())[0]
-                img_bytes = images[img_key]
+                img_bytes, width, height, depth = images[img_key]
                 
                 Path(png).write_bytes(img_bytes)
                 click.echo(f"Image saved to {png}")
             else:
                 click.echo("No LaTeX expressions found in the input.")
+                sys.exit(1)
+        elif eml:
+            # Save as .eml file
+            eml_content = builder.save_as_eml(processed_text, images, subject, 
+                                            from_addr or "sender@example.com",
+                                            to_addr or "recipient@example.com")
+            Path(eml).write_text(eml_content, encoding='utf-8')
+            click.echo(f"✓ Email saved to {eml}")
+            click.echo("Double-click to open in your default email client")
+        elif send or sendgrid:
+            # Send email
+            if not to_addr:
+                click.echo("Error: --to is required when sending email", err=True)
+                sys.exit(1)
+                
+            # Build email message
+            msg = builder.build_html_email(processed_text, images, subject,
+                                         from_addr or "noreply@mathrender.com", to_addr)
+            
+            try:
+                if sendgrid:
+                    # Use SendGrid API
+                    sender = SendGridSender(sendgrid_api_key)
+                    if sender.send_email(msg):
+                        click.echo(f"✓ Email sent successfully via SendGrid to {to_addr}")
+                    else:
+                        click.echo("✗ Failed to send email via SendGrid", err=True)
+                        sys.exit(1)
+                else:
+                    # Use SMTP
+                    if smtp_provider and smtp_user and smtp_pass:
+                        # Use provider presets
+                        sender = SmtpSender.from_provider(smtp_provider, smtp_user, smtp_pass)
+                    elif smtp_user and smtp_pass and not smtp_host:
+                        # Default to Gmail if only user/pass provided
+                        sender = SmtpSender.from_provider('gmail', smtp_user, smtp_pass)
+                    else:
+                        # Use custom SMTP settings
+                        sender = SmtpSender(smtp_host, smtp_port, smtp_user, smtp_pass)
+                    
+                    # Send email
+                    if sender.send_email(msg):
+                        click.echo(f"✓ Email sent successfully via SMTP to {to_addr}")
+                    else:
+                        click.echo("✗ Failed to send email", err=True)
+                        sys.exit(1)
+                    
+            except ValueError as e:
+                click.echo(f"Error: {e}", err=True)
+                if sendgrid:
+                    click.echo("\nTo use SendGrid:")
+                    click.echo("1. Sign up at https://sendgrid.com (free)")
+                    click.echo("2. Get your API key from Settings > API Keys")
+                    click.echo("3. Set environment variable: export SENDGRID_API_KEY='your-key'")
+                    click.echo("4. Or use: --sendgrid-api-key 'your-key'")
+                else:
+                    click.echo("\nTo send emails via SMTP, provide credentials either:")
+                    click.echo("1. Via environment variables: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS")
+                    click.echo("2. Via command options: --smtp-host, --smtp-port, --smtp-user, --smtp-pass")
+                    click.echo("3. Via provider preset: --smtp-provider gmail --smtp-user you@gmail.com --smtp-pass 'app-password'")
                 sys.exit(1)
         elif mime or output:
             # Build MIME email
@@ -165,10 +250,6 @@ def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, 
             border-radius: 5px;
             border: 1px solid #90caf9;
         }}
-        img {{
-            vertical-align: middle;
-            margin: 0 4px;
-        }}
     </style>
 </head>
 <body>
@@ -181,7 +262,7 @@ def main(input, file, output, dpi, subject, from_addr, to_addr, png, mime, raw, 
         </ol>
     </div>
     <div class="content">
-        <div dir="ltr">{html_content}</div>
+        <div>{html_content}</div>
     </div>
 </body>
 </html>"""

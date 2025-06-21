@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mathrender"
-version = "0.1.0"
+version = "0.1.1"
 description = "Convert LaTeX mathematical expressions to images for web and email"
 authors = ["Francisco Boerr <francisco.boerr@deinnovatie.com>"]
 readme = "README.md"

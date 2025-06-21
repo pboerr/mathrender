@@ -1,1 +1,1 @@
-"""Tests for latex-email package."""
+"""Tests for mathrender package."""

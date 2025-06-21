@@ -5,7 +5,9 @@ Convert LaTeX mathematical expressions to images for web and email.
 ## Features
 
 - Convert LaTeX expressions to HTML with embedded images
-- Automatic browser preview for easy copying to Gmail
+- **Secure email sending via SendGrid API (no password exposure)**
+- SMTP support for Gmail, Outlook, and other providers
+- Automatic browser preview for easy copying
 - High-quality PNG rendering of mathematical expressions
 - Simple command-line interface
 - Support for both inline ($...$) and display ($$...$$) math
@@ -50,6 +52,25 @@ pip install -e .
 
 ## Quick Start
 
+### SendGrid Setup (Recommended - More Secure)
+
+1. **Get a Free SendGrid Account:**
+   - Sign up at https://sendgrid.com (free tier: 100 emails/day)
+   - Go to Settings → API Keys → Create API Key
+   - Copy your API key
+
+2. **Set Environment Variable:**
+   ```bash
+   export SENDGRID_API_KEY="SG.xxxxxxxxxxxxxxxxxxxx"
+   ```
+
+3. **Send Your First Email:**
+   ```bash
+   mathrender 'The equation $E = mc^2$ is revolutionary!' --sendgrid --to recipient@example.com
+   ```
+
+That's it! No email passwords needed - just a secure API key.
+
 ### Basic Usage
 
 Convert LaTeX expressions and preview in browser:
@@ -85,6 +106,26 @@ echo 'The quadratic formula is $x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$.' | math
 mathrender -f document.txt --mime
 ```
 
+**Save as .eml file (opens in email clients):**
+```bash
+mathrender 'The equation $E = mc^2$ is famous.' --eml output.eml
+```
+
+**Send email directly:**
+```bash
+# SendGrid (recommended - most secure)
+export SENDGRID_API_KEY="SG.xxxxxxxxxxxxxxxxxxxx"
+mathrender 'Math: $E = mc^2$' --sendgrid --to recipient@example.com
+
+# Or pass API key directly
+mathrender -f document.txt --sendgrid --to recipient@example.com \
+    --sendgrid-api-key 'SG.xxxxxxxxxxxxxxxxxxxx'
+
+# SMTP alternatives (Gmail, Outlook, etc.)
+mathrender 'Content' --send --to recipient@example.com \
+    --smtp-provider gmail --smtp-user you@gmail.com --smtp-pass 'app-password'
+```
+
 ## Command Reference
 
 ### Basic Usage
@@ -98,11 +139,22 @@ mathrender [OPTIONS] [INPUT]
 - `-o, --output PATH`: Save output to file (MIME format)
 - `-p, --png PATH`: Save as PNG image file
 - `--mime`: Output MIME content instead of opening HTML
-- `--dpi INTEGER`: Image resolution (default: 300)
-- `--subject TEXT`: Email subject line (for MIME output)
-- `--from TEXT`: From email address (for MIME output)
-- `--to TEXT`: To email address (for MIME output)
+- `--eml PATH`: Save as .eml file that opens in email clients
+- `--dpi INTEGER`: Image resolution (default: 110)
+- `--subject TEXT`: Email subject line
+- `--from TEXT`: From email address
+- `--to TEXT`: To email address (required for sending)
 - `--raw`: Output raw MIME without base64 encoding
+
+**Email Sending Options:**
+- `--sendgrid`: Send via SendGrid API (recommended)
+- `--sendgrid-api-key`: SendGrid API key (or use SENDGRID_API_KEY env var)
+- `--send`: Send via SMTP
+- `--smtp-provider`: Use preset for gmail/outlook/yahoo/office365
+- `--smtp-host`: Custom SMTP server hostname
+- `--smtp-port`: Custom SMTP server port
+- `--smtp-user`: SMTP username (usually your email)
+- `--smtp-pass`: SMTP password (use app passwords for Gmail/Outlook)
 
 ### Check Dependencies
 
@@ -129,6 +181,7 @@ mathrender --check
 
 ## Tips for Gmail
 
+### Copy/Paste Method
 1. The HTML preview opens automatically in your browser
 2. Select all content (Ctrl+A or Cmd+A)
 3. Copy (Ctrl+C or Cmd+C)
@@ -136,6 +189,54 @@ mathrender --check
 5. After pasting, you can resize images by clicking and dragging
 6. The images are embedded, so recipients don't need to "load images"
 7. Works with Gmail's confidential mode
+
+**Note:** Gmail may strip some styling during paste operations, which can affect image alignment.
+
+### EML File Method (Recommended for Perfect Formatting)
+If you experience alignment issues with copy/paste, use the `.eml` file approach:
+
+```bash
+mathrender 'Your text with $LaTeX$ expressions' --eml email.eml
+```
+
+Then:
+1. Double-click the `.eml` file to open it in your default email client
+2. The email will open with all formatting preserved
+3. Add recipients and send
+
+This method preserves all styling and ensures perfect image alignment.
+
+### Direct Email Sending (No Email Client Needed)
+
+#### SendGrid API (Recommended - Most Secure)
+No password exposure - just use an API key:
+
+**Quick Setup:**
+1. Sign up for free at https://sendgrid.com (100 emails/day free)
+2. Create API key: Settings → API Keys → Create API Key
+3. Set environment variable:
+   ```bash
+   export SENDGRID_API_KEY="SG.xxxxxxxxxxxxxxxxxxxx"
+   ```
+4. Send emails:
+   ```bash
+   mathrender 'Your $LaTeX$ content' --sendgrid --to recipient@example.com
+   ```
+
+**Why SendGrid?**
+- No password exposure (API keys can be revoked anytime)
+- Better deliverability
+- Free tier is generous (100 emails/day)
+- No 2FA or app passwords needed
+
+#### SMTP Alternative (Gmail, Outlook, etc.)
+If you prefer SMTP:
+```bash
+mathrender 'Content' --send --to recipient@example.com \
+    --smtp-provider gmail --smtp-user you@gmail.com --smtp-pass 'app-password'
+```
+
+**Note:** SMTP requires app passwords for Gmail/Outlook, which is less secure than API keys.
 
 ## Troubleshooting
 

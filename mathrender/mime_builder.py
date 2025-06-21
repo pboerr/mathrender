@@ -16,7 +16,7 @@ class MimeEmailBuilder:
         """Initialize the MIME builder."""
         pass
     
-    def build_gmail_text_email(self, text: str, images: Dict[str, bytes], 
+    def build_gmail_text_email(self, text: str, images: Dict[str, tuple], 
                                subject: str = "LaTeX Email",
                                from_addr: Optional[str] = None,
                                to_addr: Optional[str] = None) -> MIMEMultipart:
@@ -24,7 +24,7 @@ class MimeEmailBuilder:
         
         Args:
             text: Text with image placeholders
-            images: Dict mapping placeholder IDs to PNG bytes
+            images: Dict mapping placeholder IDs to (bytes, width, height, depth)
             subject: Email subject
             from_addr: From address (optional)
             to_addr: To address (optional)
@@ -54,7 +54,7 @@ class MimeEmailBuilder:
         msg.attach(text_part)
         
         # Attach images
-        for img_id, img_data in images.items():
+        for img_id, (img_data, width, height, depth) in images.items():
             img = MIMEImage(img_data)
             img.add_header('Content-ID', f'<{img_id}>')
             img.add_header('Content-Disposition', 'inline', filename=f'{img_id}.png')
@@ -62,7 +62,7 @@ class MimeEmailBuilder:
         
         return msg
     
-    def build_html_email(self, text: str, images: Dict[str, bytes], 
+    def build_html_email(self, text: str, images: Dict[str, tuple], 
                         subject: str = "LaTeX Email",
                         from_addr: Optional[str] = None,
                         to_addr: Optional[str] = None) -> MIMEMultipart:
@@ -70,7 +70,7 @@ class MimeEmailBuilder:
         
         Args:
             text: Text with image placeholders
-            images: Dict mapping placeholder IDs to PNG bytes
+            images: Dict mapping placeholder IDs to (bytes, width, height, depth)
             subject: Email subject
             from_addr: From address (optional)
             to_addr: To address (optional)
@@ -96,7 +96,7 @@ class MimeEmailBuilder:
         msg.attach(html_part)
         
         # Attach images
-        for img_id, img_data in images.items():
+        for img_id, (img_data, width, height, depth) in images.items():
             img = MIMEImage(img_data)
             img.add_header('Content-ID', f'<{img_id}>')
             img.add_header('Content-Disposition', 'inline', filename=f'{img_id}.png')
@@ -104,7 +104,7 @@ class MimeEmailBuilder:
         
         return msg
     
-    def _text_to_html(self, text: str, images: Dict[str, bytes]) -> str:
+    def _text_to_html(self, text: str, images: Dict[str, tuple]) -> str:
         """Convert text with placeholders to HTML with embedded images.
         
         Args:
@@ -121,9 +121,12 @@ class MimeEmailBuilder:
         html_text = html_text.replace('\n', '<br>\n')
         
         # Replace image placeholders with img tags
-        for img_id in images.keys():
+        for img_id, (img_data, width, height, depth) in images.items():
             placeholder = f"{{{{{img_id}}}}}"
-            img_tag = f'<img src="cid:{img_id}" style="vertical-align: middle; max-width: 100%;" alt="LaTeX expression">'
+            # Mimic Gmail's internal format for better paste compatibility
+            # Calculate vertical offset based on image height
+            vertical_offset = -height * 0.2  # Approximate baseline adjustment
+            img_tag = f'<img src="cid:{img_id}" width="{width}" height="{height}" style="display:inline;vertical-align:{vertical_offset:.3f}px" class="CToWUd" data-bit="iit" alt="LaTeX expression">'
             html_text = html_text.replace(placeholder, img_tag)
         
         # Wrap in basic HTML structure
@@ -141,8 +144,7 @@ class MimeEmailBuilder:
             padding: 20px;
         }}
         img {{
-            vertical-align: middle;
-            margin: 0 4px;
+            /* Styles are inline for Gmail compatibility */
         }}
     </style>
 </head>
@@ -168,13 +170,13 @@ class MimeEmailBuilder:
         
         return text
     
-    def build_raw_mime(self, text: str, images: Dict[str, bytes],
+    def build_raw_mime(self, text: str, images: Dict[str, tuple],
                       subject: str = "LaTeX Email") -> str:
         """Build raw MIME string suitable for Gmail API.
         
         Args:
             text: Text with image placeholders
-            images: Dict mapping placeholder IDs to PNG bytes
+            images: Dict mapping placeholder IDs to (bytes, width, height, depth)
             subject: Email subject
             
         Returns:
@@ -188,12 +190,24 @@ class MimeEmailBuilder:
         # Base64 encode for Gmail API
         return base64.urlsafe_b64encode(mime_string.encode()).decode()
     
-    def build_clipboard_html(self, text: str, images: Dict[str, bytes]) -> str:
+    def save_as_eml(self, text: str, images: Dict[str, tuple],
+                    subject: str = "LaTeX Email", 
+                    from_addr: str = "user@example.com",
+                    to_addr: str = "recipient@example.com") -> str:
+        """Save email as .eml file that can be opened in email clients.
+        
+        Returns:
+            Raw MIME message string
+        """
+        msg = self.build_html_email(text, images, subject, from_addr, to_addr)
+        return msg.as_string()
+    
+    def build_clipboard_html(self, text: str, images: Dict[str, tuple]) -> str:
         """Build HTML suitable for clipboard with inline base64 images.
         
         Args:
             text: Text with image placeholders
-            images: Dict mapping placeholder IDs to PNG bytes
+            images: Dict mapping placeholder IDs to (bytes, width, height, depth)
             
         Returns:
             HTML string with inline base64 images
@@ -202,10 +216,12 @@ class MimeEmailBuilder:
         html_text = self._escape_html(text)
         
         # Replace placeholders with inline base64 images
-        for img_id, img_data in images.items():
+        for img_id, (img_data, width, height, depth) in images.items():
             placeholder = f"{{{{{img_id}}}}}"
             base64_data = base64.b64encode(img_data).decode()
-            img_tag = f'<img src="data:image/png;base64,{base64_data}" style="vertical-align: middle;" alt="LaTeX expression">'
+            # Mimic Gmail's internal format
+            vertical_offset = -height * 0.2
+            img_tag = f'<img src="data:image/png;base64,{base64_data}" width="{width}" height="{height}" style="display:inline;vertical-align:{vertical_offset:.3f}px" class="CToWUd" data-bit="iit" alt="LaTeX expression">'
             html_text = html_text.replace(placeholder, img_tag)
         
         # Convert newlines to <br>

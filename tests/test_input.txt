@@ -1,0 +1,19 @@
+Sea $\varphi : N \rtimes_\phi H \to G$ tal que $\varphi((n,h)) = nh$.
+\begin{align*}
+    &\varphi((n,h).(n',h')) = \varphi((n.\phi_h(n'),hh')) = n.\phi_h(n').hh' = n.(hn'h^{-1}).hh' = nhn'(h^{-1}h)h' = \\
+    &= nhn'h' = \varphi(n,h).\varphi(n',h')
+\end{align*}
+Entonces es morfismo.
+
+Sean $(n,h),(n',h') \in N \rtimes_\phi H$ tales que $\varphi((n,h)) = \varphi((n',h'))$. Entonces $nh = n'h'$ y por unicidad de escritura de elementos de G como producto de elementos de N y H, tendremos que
+$n=n'$ y $h=h'$. Luego, es inyectiva.
+
+Sea $g \in G$, como $G = NH$ y $N \cap H = \{1\}$, existen únicos $n \in N$, $h \in H$ tales que $g=nh$. Basta con tomar $\varphi((n,h)) = nh = g$. Es sobreyectiva.
+
+Mostramos que existe un morfismo de grupos $\phi : H \to Aut(N)$ y un isomorfismo $\varphi : N \rtimes_\phi H \to G$.
+
+Para concluír, tenemos que ver que el diagrama conmute. Tomemos $n \in N$, podremos ver que por cualquier camino llegamos al mismo resultado:
+
+\[(\pi \circ \varphi \circ i_N)(n) = \pi(\varphi(i_N(n))) = \pi(\varphi((n,1))) = \pi(n1) = \pi(n) = 1\]
+
+\[(\pi \circ i_H \circ r \circ i_N)(n) = \pi ( i_H(r (i_N(n)))) = \pi ( i_H(r(n))) = \pi ( i_H(1)) = \pi (1) = 1\]

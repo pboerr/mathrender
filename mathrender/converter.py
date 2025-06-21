@@ -52,10 +52,13 @@ class LatexToEmailConverter:
         """
         expressions = []
         
-        # Display math: $$...$$ or \[...\]
+        # Display math: $$...$$ or \[...\] or \begin{align*}...\end{align*}
         display_patterns = [
             (r'\$\$(.*?)\$\$', True),
-            (r'\\\[(.*?)\\\]', True)
+            (r'\\\[(.*?)\\\]', True),
+            (r'\\begin\{align\*?\}(.*?)\\end\{align\*?\}', True),
+            (r'\\begin\{equation\*?\}(.*?)\\end\{equation\*?\}', True),
+            (r'\\begin\{gather\*?\}(.*?)\\end\{gather\*?\}', True)
         ]
         
         # Inline math: $...$ or \(...\)
@@ -84,7 +87,7 @@ class LatexToEmailConverter:
         
         return expressions
     
-    def latex_to_image(self, latex_code: str, is_display: bool = False, is_raw: bool = False) -> bytes:
+    def latex_to_image(self, latex_code: str, is_display: bool = False, is_raw: bool = False, full_match: str = None) -> Tuple[bytes, int, int, int]:
         """Convert LaTeX code to PNG image bytes.
         
         Args:
@@ -93,13 +96,24 @@ class LatexToEmailConverter:
             is_raw: Whether the latex_code is raw LaTeX (no $ wrapping needed)
             
         Returns:
-            PNG image as bytes
+            Tuple of (PNG bytes, width, height, depth)
         """
+        # Escape problematic characters for LaTeX
+        if not is_raw:
+            # Replace straight quotes with LaTeX-safe versions
+            latex_code = latex_code.replace('"', "''")
+            latex_code = latex_code.replace("'", "'")
+        
         # If raw LaTeX, use as-is, otherwise wrap in $ or $$
         if is_raw:
             latex_content = latex_code
         elif is_display:
-            latex_content = f"$${latex_code}$$"
+            # Check if we have a full environment match
+            if full_match and any(env in full_match for env in ['\\begin{align', '\\begin{equation', '\\begin{gather']):
+                # Use the full match which includes the environment delimiters
+                latex_content = full_match
+            else:
+                latex_content = f"$${latex_code}$$"
         else:
             latex_content = f"${latex_code}$"
         
@@ -120,8 +134,6 @@ class LatexToEmailConverter:
                     text=True
                 )
             except subprocess.CalledProcessError as e:
-                print(f"LaTeX stderr: {e.stderr}")
-                print(f"LaTeX stdout: {e.stdout}")
                 raise RuntimeError(f"LaTeX compilation failed: {e.stderr}")
             
             # Convert DVI to PNG
@@ -129,8 +141,9 @@ class LatexToEmailConverter:
             png_file = os.path.join(tmpdir, "formula.png")
             
             try:
-                subprocess.run(
-                    ['dvipng', '-D', str(self.dpi), '-T', 'tight', '-bg', 'Transparent', 
+                # Generate without special options first
+                result = subprocess.run(
+                    ['dvipng', '-D', str(self.dpi), '-T', 'tight', '-bg', 'Transparent',
                      '-o', png_file, dvi_file],
                     check=True,
                     capture_output=True,
@@ -145,12 +158,15 @@ class LatexToEmailConverter:
                 if img.mode != 'RGBA':
                     img = img.convert('RGBA')
                 
+                # Get dimensions
+                width, height = img.size
+                
                 # Save optimized PNG to bytes
                 output = io.BytesIO()
                 img.save(output, format='PNG', optimize=True)
-                return output.getvalue()
+                return output.getvalue(), width, height, 0
     
-    def process_text(self, text: str) -> Tuple[str, Dict[str, bytes]]:
+    def process_text(self, text: str) -> Tuple[str, Dict[str, tuple]]:
         """Process text containing LaTeX expressions.
         
         Args:
@@ -159,7 +175,7 @@ class LatexToEmailConverter:
         Returns:
             Tuple of (processed_text, images_dict)
             - processed_text: Text with LaTeX replaced by placeholders
-            - images_dict: Dict mapping placeholder IDs to PNG bytes
+            - images_dict: Dict mapping placeholder IDs to (bytes, width, height, depth)
         """
         expressions = self.extract_latex_expressions(text)
         
@@ -174,9 +190,9 @@ class LatexToEmailConverter:
             placeholder = f"{{{{LATEX_IMG_{len(expressions) - i - 1}}}}}"
             
             try:
-                # Generate image
-                image_bytes = self.latex_to_image(latex_code, is_display)
-                images[f"LATEX_IMG_{len(expressions) - i - 1}"] = image_bytes
+                # Generate image with dimensions
+                image_data = self.latex_to_image(latex_code, is_display, full_match=full_match)
+                images[f"LATEX_IMG_{len(expressions) - i - 1}"] = image_data
                 
                 # Replace in text
                 processed_text = processed_text.replace(full_match, placeholder, 1)
